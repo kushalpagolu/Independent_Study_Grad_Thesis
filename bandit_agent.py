@@ -1,5 +1,5 @@
 # ============================
-# bandit_agent.py  (Improved)
+# bandit_agent.py  (Fixed)
 # ============================
 """LinUCB with ε‑greedy exploration and tie‑break randomisation.
    Suitable for <30 samples per session.
@@ -8,7 +8,7 @@ import numpy as np
 import os, pickle
 
 class LinUCBAgent:
-    def __init__(self, n_actions: int = 9, dim: int = 5, alpha: float = 1.5,
+    def __init__(self, n_actions: int = 9, dim: int = 13, alpha: float = 1.5,
                  epsilon: float = 0.3, min_epsilon: float = 0.05, decay: float = 0.995):
         self.n_actions    = n_actions
         self.dim          = dim
@@ -27,8 +27,19 @@ class LinUCBAgent:
     # ------------------------------------------------------------------
     def predict(self, context: np.ndarray, deterministic: bool = False):
         """Return full action‑vector (discrete + 4 continuous values)."""
+        # Use the full context vector (13 elements from the LSTM) to choose a discrete action.
+        # This is consistent with the agent's internal dimension `dim=13`.
         disc = self._choose_action(context)
-        action_vec = np.concatenate([[disc], context[1:]])  # keep LSTM cont.
+        
+        # The LSTM output vector is structured as [9 discrete scores, 4 continuous values].
+        # The final action vector sent to the environment requires the chosen discrete action
+        # followed by the 4 continuous values.
+        # These continuous values are the LAST 4 elements of the context vector.
+        # We slice from the index equal to the number of discrete actions to get them.
+        continuous_values = context[self.n_actions:]
+        
+        # Combine the chosen discrete action with the continuous values from the LSTM.
+        action_vec = np.concatenate([[disc], continuous_values])
         return action_vec, None
 
     def _choose_action(self, ctx: np.ndarray) -> int:
@@ -78,76 +89,3 @@ class LinUCBAgent:
         agent = cls(n_actions=n_actions, dim=dim)
         agent.A, agent.b, agent.epsilon = data['A'], data['b'], data['eps']
         return agent
-
-"""
-# ============================
-# model_utils.py  (replace file)
-# ============================
-import os
-import logging
-from bandit_agent import LinUCBAgent
-
-MODEL_FILENAME = os.path.join(os.getcwd(), "models", "drone_rl_eeg_bandit")
-
-
-def load_or_create_model(env=None):
-    #Return a LinUCB agent – loads from disk if possible.
-    logger = logging.getLogger(__name__)
-    dim = 5        # context length (matches LSTM output)
-    n_actions = 9  # discrete 0‑8
-    try:
-        if os.path.exists(f"{MODEL_FILENAME}.pkl"):
-            model = LinUCBAgent.load(MODEL_FILENAME, dim, n_actions)
-            logger.info("Loaded existing LinUCB bandit model")
-        else:
-            model = LinUCBAgent(n_actions=n_actions, dim=dim, alpha=1.5)
-            logger.info("Created new LinUCB bandit model")
-    except Exception as e:
-        logger.error(f"Failed to init LinUCB: {e}")
-        raise
-    return model
-
-
-# No replay buffer, no learn() needed. save() is called from signal_handler.
-
-# ============================
-# preprocessing_thread.py  (patch – replace marked block)
-# ============================
-# --- inside the main while‑loop, after obtaining `lstm_output` ---
-# OLD (SAC‑specific):
-#     action, _ = model_agent.predict(lstm_output, deterministic=False)
-#     ...
-#     if model_agent and hasattr(model_agent, 'replay_buffer'):
-#         model_agent.replay_buffer.add(...)
-#
-# REPLACE WITH:
-# --------------------------------------------------------------
-        # Predict discrete+continuous action vector using bandit
-        action_vec, _ = model_agent.predict(lstm_output)
-        logging.info(f"[Preproc] Bandit chose action {action_vec[0]}")
-
-        prev_state = env.current_state.copy()
-        state, reward, done, info = env.step(action_vec)
-
-        # Online bandit update – no buffers required
-        model_agent.update(lstm_output, action_vec[0], reward)
-
-        step_count += 1
-# --------------------------------------------------------------
-# (Remove the entire replay_buffer add / learn sections.)
-
-# ============================
-# signal_handler.py  (patch – comment out SAC learn)
-# ============================
-# Remove every block that references model.replay_buffer or model.learn().
-# Add instead right before exit:
-# --------------------------------------------------------------
-    if hasattr(env, 'model') and env.model and hasattr(env.model, 'save'):
-        try:
-            env.model.save(MODEL_FILENAME)
-            logger.info(f"Bandit model saved to {MODEL_FILENAME}.pkl")
-        except Exception as e:
-            logger.error(f"Failed to save bandit model: {e}")
-# --------------------------------------------------------------
-
-"""
