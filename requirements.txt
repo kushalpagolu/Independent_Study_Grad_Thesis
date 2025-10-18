@@ -1,0 +1,23 @@
+djitellopy==2.5.0
+gym==0.26.2
+hid==1.0.8
+matplotlib==3.10.7
+mne==1.10.2
+numpy
+openpyxl==3.1.5
+pandas==2.3.3
+psutil==7.1.0
+pycryptodome==3.23.0
+scikit_learn==1.7.2
+scipy==1.11.4
+torch==2.9.0
+
+
+#pip install -r requirements.txt
+
+#pip freeze > requirements.txt
+
+#python -m venv venv
+#source venv/bin/activate  (Linux/Mac)
+#venv\Scripts\activate     (Windows)
+#pipreqs . --force --savepath=requirements.txt
