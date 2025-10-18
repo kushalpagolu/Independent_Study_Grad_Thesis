@@ -27,17 +27,14 @@ class LinUCBAgent:
     # ------------------------------------------------------------------
     def predict(self, context: np.ndarray, deterministic: bool = False):
         """Return full action‑vector (discrete + 4 continuous values)."""
-        # Use the full context vector (13 elements from the LSTM) to choose a discrete action.
-        # This is consistent with the agent's internal dimension `dim=13`.
-        disc = self._choose_action(context)
-        
         # The LSTM output vector is structured as [9 discrete scores, 4 continuous values].
-        # The final action vector sent to the environment requires the chosen discrete action
-        # followed by the 4 continuous values.
-        # These continuous values are the LAST 4 elements of the context vector.
-        # We slice from the index equal to the number of discrete actions to get them.
-        continuous_values = context[self.n_actions:]
-        
+        # Use only the first `dim` elements for LinUCB context (should be 13).
+        linucb_context = context[:self.dim]
+        disc = self._choose_action(linucb_context)
+
+        # The last 4 elements are the continuous values.
+        continuous_values = context[-4:]
+
         # Combine the chosen discrete action with the continuous values from the LSTM.
         action_vec = np.concatenate([[disc], continuous_values])
         return action_vec, None
